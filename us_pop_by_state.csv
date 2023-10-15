@@ -1,4 +1,4 @@
-rank,state,state_code,2020_census,percent_of_total
+rank,state,state_code,pop,percent_of_total
 1.0,California,CA,39538223,0.1191
 2.0,Texas,TX,29145505,0.0874
 3.0,Florida,FL,21538187,0.0647

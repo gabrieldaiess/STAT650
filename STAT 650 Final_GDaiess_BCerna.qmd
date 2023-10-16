@@ -1,0 +1,257 @@
+---
+title: "650 Final"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+# Read In Data and Libraries
+
+```{r}
+library(pacman)
+p_load(tidyverse, lubridate, tidytuesdayR)
+
+tuesdata <- tidytuesdayR::tt_load('2023-06-20')
+ufo_sightings <- tuesdata$`ufo_sightings`
+```
+
+# Geography of UFO Sightings
+
+## Countries
+
+```{r}
+# how many countries are in the set?
+ufo_sightings |> 
+  group_by(country_code) |> 
+  summarize(
+    count = n()
+  ) |> 
+# which countries have the most UFO sightings?
+  arrange(desc(count))
+
+# what proportion of all sightings happen in the US?
+us_observations <- ufo_sightings |> 
+  filter(country_code == "US")
+
+nrow(us_observations)/nrow(ufo_sightings)
+
+```
+
+Given that the 91% of the UFO observations are form the United States, one of our research questions is: which states have the highest incidents of UFO sightings overall and per capita.
+
+## States (Data Cleaning)
+
+```{r}
+# which states have the most UFO sightings overall
+us_observations |> 
+  group_by(state) |> 
+  summarize(
+    count = n()
+  ) |> 
+  arrange(desc(count))
+
+# why are there 52 states?
+unique_states <-us_observations |> 
+  distinct(state)
+print(unique_states)
+
+# Fl is coded as both FL and Fl, need to code those observations as one unique state ID
+
+count_fi <- us_observations %>%
+  filter(state == "Fl") %>%
+  nrow()
+
+us_observations1 <- us_observations %>%
+  mutate(state = ifelse(state == "Fl", "FL", state))
+
+# check to see it worked
+us_observations1 %>%
+  filter(state == "Fl") %>%
+  nrow()
+
+# check number of US states now
+unique_states1 <-us_observations1 |> 
+  distinct(state)
+print(unique_states) #51 makes sense because DC is included as a state
+
+```
+
+```{r}
+#using cleaned ds # which states have the most UFO sightings overall
+ufo_us <- us_observations1 |> 
+  group_by(state) |> 
+  summarize(
+    count = n()
+  ) |> 
+  arrange(desc(count))
+
+# Florida now has more overall observations than WA--highlighting the importance of working with clean data
+```
+
+## States UFO Observatiobns Per Capita
+
+```{r}
+# read in csv hosted on Github
+state_pop_df <- readr::read_csv('https://raw.githubusercontent.com/gabrieldaiess/STAT650/main/us_pop_by_state.csv')
+
+# join to UFO df
+
+ufo_final_df <- inner_join(us_observations1, state_pop_df, by = c("state" = "state_code"))
+
+# calculate per 100,000
+ufo_final_df <- ufo_final_df |> 
+  group_by(state) |> 
+  mutate(pop_per_100k = (pop / 100000))
+
+ufo_final_df <- ufo_final_df |> 
+  group_by(state) |> 
+  mutate(obs_per_100k = n() / pop_per_100k)
+
+# group and rank observations per capita
+ufo_pc <- ufo_final_df |> 
+  group_by(state) |> 
+  summarise(obs_per_100k = max(obs_per_100k, na.rm = TRUE)) |> 
+  arrange(desc(obs_per_100k))
+```
+
+Per capita observations tells a much different story than overall count.
+
+```{r}
+# join needed for data viz
+ufo_g1 <- inner_join(ufo_pc, ufo_us, by = c("state" = "state"))
+```
+
+## Figure 1
+
+```{r}
+# bar chart
+options(repr.plot.width = 10, repr.plot.height = 15)  
+ggplot(data = ufo_g1, aes(x = count, y = reorder(state, count), fill = obs_per_100k)) +
+  geom_bar(stat = "identity", color = "black", size = 0.5) +
+  scale_fill_gradient(low = "blue", high = "red") +
+  labs(title = "UFO Sightings by State",
+       x = "Count",
+       y = "State",
+       fill = "Obs. per 100K") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(angle = -10, size = 5, face = "bold"))
+
+```
+
+# Shape:
+
+```{r}
+#count shapes of UFOs
+shape_count <- ufo_sightings |> 
+  count(shape) |>
+  arrange(desc(n))
+shape_count
+```
+
+## Figure 2
+
+```{r}
+# make a figure of shape
+ggplot(data = shape_count, aes(x = n, y = reorder(shape, -n))) + 
+  geom_bar(stat = "identity", fill = "orange") + 
+  labs(title = "UFO Sightings by Shape",
+       x = "Shape",
+       y = "Sightings Count") +
+  theme_minimal()
+```
+
+# Duration
+
+How long do most UFO sightings last?
+
+The UFO sighting durations, as shown in the histogram, are right-skewed, indicating most sightings are of shorter durations, particularly below 10 minutes. The highest frequency falls within the 10-100 minutes range. While there are infrequent cases of prolonged sightings lasting beyond 10,000 minutes, these are rare. The log scale on the x-axis aids in visually understanding this broad range of durations by emphasizing the multiplicative differences, making the distribution more comprehensible.
+
+```{r}
+#summary states on duration for paper
+ufo_sightings <- ufo_sightings |>
+  mutate(duration_minutes = duration_seconds / 60)
+
+
+summary_stats <- ufo_sightings |>
+  summarize(
+    mean_duration = mean(duration_minutes, na.rm = TRUE),
+    median_duration = median(duration_minutes, na.rm = TRUE),
+    max_duration = max(duration_minutes, na.rm = TRUE),
+    min_duration = min(duration_minutes, na.rm = TRUE)
+  )
+  summary_stats
+```
+
+## Figure 3
+
+```{r}
+ggplot(ufo_sightings, aes(x = log10(duration_minutes))) +
+  geom_histogram(fill = "deeppink", color = "black", binwidth = 0.5) +
+  labs(
+    title = "Histogram of UFO Sighting Durations",
+    x = "Log 10 (Duration)",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+```
+
+# Hour/Month Sightings Occur
+
+## Figure 4
+
+```{r}
+ufo_sightings <- ufo_sightings |>
+  mutate(hour = hour(reported_date_time))
+
+ggplot(ufo_sightings, aes(x = hour)) +
+  geom_bar(fill = "cyan", color = "black") +
+  labs(title = "UFO Sightings by Hour of the Day", x = "Hour of the Day", y = "Number of Sightings") +
+  theme_minimal()
+
+
+```
+
+```{r}
+ufo_sightings <- ufo_sightings |> 
+  mutate(
+    month = month(reported_date_time, label = TRUE),
+    year = year(reported_date_time),
+    # Create a decade variable
+    decade = 10 * (year(reported_date_time) %/% 10)
+  )
+```
+
+## Decade Analysis
+
+```{r}
+#Determine the current decade
+current_decade <- 10 * (year(Sys.Date()) %/% 10)
+
+#Filter for the last 5 decades
+ufo_sightings <- ufo_sightings |> 
+  filter(decade >= current_decade - 40) 
+
+```
+
+## Summarizing sightings by decade and month
+
+```{r}
+decade_sightings <- ufo_sightings |>
+  group_by(decade, month) |>
+  summarize(count = n(), .groups = "drop")
+```
+
+## Figure 5
+
+```{r}
+ggplot(decade_sightings, aes(x = month, y = count, group = as.factor(decade))) +
+  geom_line(aes(color = as.factor(decade))) + 
+  labs(
+    title = "UFO Sightings by Month (Last 5 Decades)",
+    x = "Month",
+    y = "Number of Sightings",
+    color = "Decade"
+  ) +
+  theme_minimal()
+```
